@@ -157,3 +157,19 @@ django_heroku.settings(locals())
 
 # Instalar gunicorn
 pip install gunicorn==20.0.4
+
+# Criar na pasta principal do projeto um arquivo com o nome Procfile
+# Nesse arquivo, colocar o código:
+
+# Para colocar tudo do projeto no git
+git init
+git add .
+git commit -m "deploy do projeto"
+heroku git:remote -a tonello-cursodjangorest //Esse código vai ser diferente dependendo do app
+git push heroku master
+
+# Fazer toda a migração no heroku
+heroku run pyhton manage.py migrate
+
+# Criar superuser para a api já deployada
+heroku run pyhton manage.py createsuperuser
