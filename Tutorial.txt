@@ -1,0 +1,159 @@
+# Api com Django 3: Validações, buscas, filtros e deploy
+
+# Criar um ambiente virtual para um projeto já existente
+python -m venv ./venv 
+venv\Scripts\activate.bat
+pip install -r requirements.txt
+
+# instalar dependências na venv
+pip install -r requirements.txt
+
+# fazer migrações e rodar o servidor
+python manage.py makemigrations
+python manage.py migrate
+python manage.py runserver
+
+# Criar um super usuário
+python manage.py createsuperuser
+
+# Documentação queries: https://docs.djangoproject.com/en/3.2/topics/db/queries/
+
+#################################################################################################################################
+#############################################     Validação dos dados inputados     #############################################
+#################################################################################################################################
+
+# Para só permitir valores únicos (por exemplo, de CPF):
+# Alterar em models.py, adicionando 'unique = True'
+cpf = models.CharField(max_length=11, unique=True)
+
+# Mais conteúdo sobre validação: https://www.django-rest-framework.org/api-guide/validators/
+
+# Algumas validações devem ser feitas no serializers.py, criando uma função de validação dentro da classe
+class ClienteSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Cliente
+        fields = '__all__'
+    def validate_cpf(self, cpf):
+        if len(cpf) != 11:
+            raise serializers.ValidationError("O CPF deve ter 11 dígitos.")
+        return cpf
+
+# Para otimizar o código da validação de vários campos, criar o arquivo validators.py
+# Em validators.py, criar as funções de validação no seguinte padrão:
+def cpf_valido(cumero_cpf):
+    return len(cumero_cpf) != 11
+def nome_valido(nome):
+    return nome.isalpha()
+...
+
+# Importar funções de validação em serializers.py:
+from clientes.validators import *
+
+# Para retornar a variável em serializers.py, escrever a validação na classe de serialização no seguinte formato:
+class ClienteSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Cliente
+        fields = '__all__'
+    def validate(self, data):
+        if not cpf_valido(data['cpf']):
+            raise serializers.ValidationError({'cpf':"O CPF deve ter 11 dígitos."})
+        return data
+        if not nome_valido(data['nome']):
+            raise serializers.ValidationError({'nome':"O nome não é válido"})
+        return data
+
+# Verificar formato do celular
+import re
+def celular_valido(numer_celular):
+    """Verifica se o celular é válido (11 44444-5555)"""
+    modelo = '[0-9]{2} [0-9]{5}-[0-9]{4}'
+    resposta = re.findall(modelo, numer_celular)
+    return resposta
+
+# Biblioteca para verificar se o CPF é válido
+pip install validate-docbr
+# Documentação: https://pypi.org/project/validate-docbr/
+# Exemplo:
+from validate_docbr import CPF
+def cpf_valido(numero_cpf):
+    cpf = CPF()
+    return cpf.validate(numero_cpf)
+
+#################################################################################################################################
+####################################################     Paginação da API     ###################################################
+#################################################################################################################################
+
+# Documentação: https://www.django-rest-framework.org/api-guide/pagination/
+
+# Para os dados serem apresentados em na ordem correta no DjangoAdmin, acrescentar ordering em admin.py
+class Clientes(admin.ModelAdmin):
+    list_display = ('id', 'nome', 'email','cpf', 'rg', 'celular', 'ativo')
+    list_display_links = ('id', 'nome')
+    search_fields = ('nome',)
+    list_filter = ('ativo',)
+    list_editable = ('ativo',)
+    list_per_page = 25
+    ordering = ('nome',)
+admin.site.register(Cliente, Clientes)
+
+#################################################################################################################################
+####################################################     Ordenação e filtros     ################################################
+#################################################################################################################################
+
+# Ordenação na API
+# Instalação do django-filter
+pip install django-filter
+
+# Adicionar django_filters nos apps instalados (settings.py)
+# na instalação, é filter no singular. Na importação é filters no plural
+INSTALLED_APPS = [
+    ...
+    'django_filters',
+]
+
+# Em views.py, importar
+from rest_framework import viewsets, filters
+from django_filters.rest_framework import DjangoFilterBackend
+
+# Na classe do views, adicionar filter_backends e ordering_fields para fazer a ordenação:
+class ClientesViewSet(viewsets.ModelViewSet):
+    """Listando clientes"""
+    queryset = Cliente.objects.all()
+    serializer_class = ClienteSerializer
+    filter_backends = [DjangoFilterBackend, filters.OrderingFilter]
+    ordering_fields = ['nome']
+
+# Para filtrar
+# Adicionar no filter_backends o filters.SearchFilter e adicionar o parâmetro search_fields
+class ClientesViewSet(viewsets.ModelViewSet):
+    """Listando clientes"""
+    queryset = Cliente.objects.all()
+    serializer_class = ClienteSerializer
+    filter_backends = [DjangoFilterBackend, filters.OrderingFilter, filters.SearchFilter]
+    ordering_fields = ['nome']
+    search_fields = ['nome', 'cpf',]
+    filterset_fields = ['ativo']
+
+# O filterset_fields é para filtrar só os ativos 
+
+#################################################################################################################################
+####################################################     Deploy pelo Heroku     #################################################
+#################################################################################################################################
+
+# 1. No site do Heroku, criar um app,
+# 2. Ir em getting started:
+# https://devcenter.heroku.com/articles/getting-started-with-python
+# Executar os comandos no terminal:
+heroku login
+
+# Instalar o heroku no projeto django
+pip install django-heroku
+
+# Importar o heroku em settings.py
+import django_heroku
+
+# Na última linha de settings.py, adicionar o código:
+django_heroku.settings(locals())
+
+# Instalar gunicorn
+pip install gunicorn==20.0.4
